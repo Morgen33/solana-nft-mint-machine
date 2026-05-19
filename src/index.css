@@ -1,0 +1,32 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgb(124 58 237 / 0.35), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgb(6 182 212 / 0.15), transparent),
+    #0a0a0f;
+  color: #e4e4e7;
+}
+
+.wallet-adapter-button {
+  background: linear-gradient(135deg, #7c3aed, #06b6d4) !important;
+  border-radius: 0.75rem !important;
+  font-family: var(--font-sans) !important;
+  height: 2.75rem !important;
+}
+
+.wallet-adapter-modal-wrapper {
+  background: rgb(10 10 15 / 0.85) !important;
+}

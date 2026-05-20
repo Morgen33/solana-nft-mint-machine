@@ -1,15 +1,19 @@
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { useWallet } from '@solana/wallet-adapter-react'
+import { clearTreeAddress, loadTreeAddress, saveTreeAddress } from '../lib/cnftTree'
 import {
   buildMetadataJson,
   downloadMetadataJson,
   parseAttributesJson,
 } from '../lib/metadata'
-import { mintBatch, simulateMint } from '../lib/mintNft'
-import type { MintResult } from '../lib/mintNft'
+import { mintBatch, simulateMint } from '../lib/mint'
+import type { MintResult, MintType } from '../lib/mint'
+import { getMintOption } from '../lib/mintOptions'
 import type { SolanaCluster } from '../lib/network'
 import { explorerTxUrl } from '../lib/network'
+import { CnftTreeSetup } from './CnftTreeSetup'
+import { NftTypePicker } from './NftTypePicker'
 
 type Props = {
   cluster: SolanaCluster
@@ -25,6 +29,8 @@ const EXAMPLE_ATTRIBUTES = `[
 export function MintMachine({ cluster }: Props) {
   const { publicKey, wallet, connected } = useWallet()
 
+  const [mintType, setMintType] = useState<MintType>('cnft')
+  const [treeAddress, setTreeAddress] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [symbol, setSymbol] = useState('NFT')
   const [description, setDescription] = useState('')
@@ -32,7 +38,7 @@ export function MintMachine({ cluster }: Props) {
   const [metadataUri, setMetadataUri] = useState('')
   const [attributesJson, setAttributesJson] = useState('')
   const [royaltyPercent, setRoyaltyPercent] = useState('5')
-  const [quantity, setQuantity] = useState('1')
+  const [quantity, setQuantity] = useState('20')
 
   const [phase, setPhase] = useState<MintPhase>('idle')
   const [statusMessage, setStatusMessage] = useState('')
@@ -43,6 +49,33 @@ export function MintMachine({ cluster }: Props) {
   const sellerFeeBasisPoints = Math.round(
     Math.min(100, Math.max(0, Number(royaltyPercent) || 0)) * 100,
   )
+
+  const walletKey = publicKey?.toBase58() ?? ''
+
+  useEffect(() => {
+    if (!walletKey) {
+      setTreeAddress(null)
+      return
+    }
+    setTreeAddress(loadTreeAddress(cluster, walletKey))
+  }, [cluster, walletKey])
+
+  const handleMintTypeChange = (type: MintType) => {
+    setMintType(type)
+    if (type === 'cnft' && Number(quantity) < 2) {
+      setQuantity('20')
+    }
+  }
+
+  const handleTreeCreated = (address: string) => {
+    setTreeAddress(address)
+    if (walletKey) saveTreeAddress(cluster, walletKey, address)
+  }
+
+  const handleClearTree = () => {
+    if (walletKey) clearTreeAddress(cluster, walletKey)
+    setTreeAddress(null)
+  }
 
   const handleDownloadMetadata = useCallback(() => {
     try {
@@ -57,7 +90,7 @@ export function MintMachine({ cluster }: Props) {
       const safeName = (name || 'nft').replace(/\s+/g, '-').toLowerCase()
       downloadMetadataJson(json, `${safeName}-metadata.json`)
       setStatusMessage(
-        'Metadata JSON downloaded. Upload it to IPFS or Arweave, then paste the URI below.',
+        'Metadata downloaded. Upload to Arweave (permanent), then paste ONE link below — same link for all copies.',
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -74,13 +107,18 @@ export function MintMachine({ cluster }: Props) {
       return
     }
 
+    if (mintType === 'cnft' && !treeAddress) {
+      setError('Create your storage tree first (Step 1 above).')
+      return
+    }
+
     if (!metadataUri.trim()) {
-      setError('Metadata URI is required (host your JSON on IPFS or Arweave).')
+      setError('Metadata URI is required — your permanent Arweave (or other) link to the JSON file.')
       return
     }
 
     if (!name.trim()) {
-      setError('Collection / NFT name is required.')
+      setError('Name is required.')
       return
     }
 
@@ -93,9 +131,15 @@ export function MintMachine({ cluster }: Props) {
     }
 
     setPhase('simulating')
-    setStatusMessage('Simulating transaction before wallet approval…')
+    setStatusMessage('Checking transaction before wallet approval…')
 
-    const simulation = await simulateMint(wallet.adapter, cluster, params)
+    const simulation = await simulateMint(
+      mintType,
+      wallet.adapter,
+      cluster,
+      params,
+      treeAddress ?? undefined,
+    )
     if (!simulation.success) {
       setPhase('error')
       setError(simulation.error ?? 'Simulation failed')
@@ -105,21 +149,25 @@ export function MintMachine({ cluster }: Props) {
 
     setSimulationUnits(simulation.unitsConsumed ?? null)
     setPhase('minting')
-    setStatusMessage(`Minting ${qty} NFT${qty > 1 ? 's' : ''}… approve in your wallet.`)
+    setStatusMessage(
+      `Minting ${qty} ${getMintOption(mintType).title} NFT${qty > 1 ? 's' : ''}… approve each prompt in your wallet.`,
+    )
 
     try {
       const minted = await mintBatch(
+        mintType,
         wallet.adapter,
         cluster,
         params,
         qty,
+        treeAddress ?? undefined,
         (current, total) => {
           setStatusMessage(`Minted ${current} of ${total}…`)
         },
       )
       setResults(minted)
       setPhase('done')
-      setStatusMessage(`Successfully minted ${minted.length} NFT${minted.length > 1 ? 's' : ''}.`)
+      setStatusMessage(`Done — ${minted.length} NFT${minted.length > 1 ? 's' : ''} minted.`)
     } catch (err) {
       setPhase('error')
       const message =
@@ -135,15 +183,21 @@ export function MintMachine({ cluster }: Props) {
     cluster,
     connected,
     metadataUri,
+    mintType,
     name,
     publicKey,
     quantity,
     sellerFeeBasisPoints,
     symbol,
+    treeAddress,
     wallet?.adapter,
   ])
 
   const isBusy = phase === 'simulating' || phase === 'minting'
+  const qty = Math.min(20, Math.max(1, Number(quantity) || 1))
+  const selectedOption = getMintOption(mintType)
+  const cnftReady = mintType !== 'cnft' || Boolean(treeAddress)
+  const canSubmit = connected && cnftReady && !isBusy
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -153,11 +207,9 @@ export function MintMachine({ cluster }: Props) {
             ⚡
           </span>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white">
-              NFT Mint Machine
-            </h1>
+            <h1 className="text-2xl font-bold tracking-tight text-white">NFT Mint Machine</h1>
             <p className="text-sm text-zinc-400">
-              Metaplex Token Metadata · {cluster === 'devnet' ? 'Devnet' : 'Mainnet'}
+              {cluster === 'devnet' ? 'Practice mode' : 'Mainnet'} · Choose your NFT type below
             </p>
           </div>
         </div>
@@ -166,129 +218,152 @@ export function MintMachine({ cluster }: Props) {
 
       {cluster === 'mainnet-beta' && (
         <div className="mb-6 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          You are on <strong>mainnet</strong>. Real SOL is spent on rent and fees.
+          <strong>Real money.</strong> Wallet must be on Mainnet with enough SOL for fees.
         </div>
       )}
 
       <form
-        className="space-y-5 rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6 shadow-xl backdrop-blur"
+        className="space-y-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6 shadow-xl backdrop-blur"
         onSubmit={(e) => {
           e.preventDefault()
           void handleMint()
         }}
       >
-        <Field label="Name" required>
-          <input
-            className={inputClass}
-            placeholder="Cosmic Ape #1"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={isBusy}
-          />
-        </Field>
+        <NftTypePicker value={mintType} onChange={handleMintTypeChange} disabled={isBusy} />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Symbol">
-            <input
-              className={inputClass}
-              placeholder="CAPE"
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
+        {mintType === 'cnft' && (
+          <>
+            <CnftTreeSetup
+              cluster={cluster}
+              treeAddress={treeAddress}
+              onTreeCreated={handleTreeCreated}
+              onClearTree={handleClearTree}
               disabled={isBusy}
             />
-          </Field>
-          <Field label="Royalty %" hint="Creator royalty on secondary sales">
-            <input
-              className={inputClass}
-              type="number"
-              min={0}
-              max={100}
-              step={0.5}
-              value={royaltyPercent}
-              onChange={(e) => setRoyaltyPercent(e.target.value)}
-              disabled={isBusy}
-            />
-          </Field>
+            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-100/90">
+              <strong>Same image for all {qty}?</strong> Use one Metadata URI for every copy. Names
+              will be numbered automatically ({name || 'Your Name'} #1, #2, …).
+            </div>
+          </>
+        )}
+
+        <div className="border-t border-zinc-800/80 pt-2">
+          <p className="mb-4 text-sm font-medium text-zinc-300">
+            {mintType === 'cnft' ? 'Step 2 — Art & details' : 'Art & details'}
+          </p>
+
+          <div className="space-y-5">
+            <Field label="Name" required>
+              <input
+                className={inputClass}
+                placeholder="My Collection"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={isBusy}
+              />
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Symbol">
+                <input
+                  className={inputClass}
+                  placeholder="MYNFT"
+                  value={symbol}
+                  onChange={(e) => setSymbol(e.target.value)}
+                  disabled={isBusy}
+                />
+              </Field>
+              <Field label="Royalty %" hint="Paid to you on resales only">
+                <input
+                  className={inputClass}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={royaltyPercent}
+                  onChange={(e) => setRoyaltyPercent(e.target.value)}
+                  disabled={isBusy}
+                />
+              </Field>
+            </div>
+
+            <Field label="Description">
+              <textarea
+                className={`${inputClass} min-h-20 resize-y`}
+                placeholder="What is this NFT?"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                disabled={isBusy}
+              />
+            </Field>
+
+            <Field
+              label="Image URL"
+              hint="Permanent link to your image (e.g. arweave.net)"
+            >
+              <input
+                className={inputClass}
+                placeholder="https://arweave.net/…"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                disabled={isBusy}
+              />
+            </Field>
+
+            <Field label="Attributes (JSON)" hint="Optional">
+              <textarea
+                className={`${inputClass} min-h-24 font-mono text-xs`}
+                placeholder={EXAMPLE_ATTRIBUTES}
+                value={attributesJson}
+                onChange={(e) => setAttributesJson(e.target.value)}
+                disabled={isBusy}
+              />
+            </Field>
+
+            <button
+              type="button"
+              className={secondaryButtonClass}
+              onClick={handleDownloadMetadata}
+              disabled={isBusy || !name || !imageUrl}
+            >
+              Download metadata JSON
+            </button>
+
+            <Field
+              label="Metadata URI"
+              required
+              hint="Upload JSON to Arweave — paste the link here (one link for all copies)"
+            >
+              <input
+                className={inputClass}
+                placeholder="https://arweave.net/…"
+                value={metadataUri}
+                onChange={(e) => setMetadataUri(e.target.value)}
+                disabled={isBusy}
+              />
+            </Field>
+
+            <Field
+              label="How many to mint?"
+              hint={`${selectedOption.title} · up to 20 per batch`}
+            >
+              <input
+                className={inputClass}
+                type="number"
+                min={1}
+                max={20}
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                disabled={isBusy}
+              />
+            </Field>
+          </div>
         </div>
-
-        <Field label="Description">
-          <textarea
-            className={`${inputClass} min-h-20 resize-y`}
-            placeholder="A one-of-one digital collectible…"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            disabled={isBusy}
-          />
-        </Field>
-
-        <Field label="Image URL" hint="HTTPS link to your artwork (used in metadata JSON)">
-          <input
-            className={inputClass}
-            placeholder="https://arweave.net/… or https://ipfs.io/ipfs/…"
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            disabled={isBusy}
-          />
-        </Field>
-
-        <Field
-          label="Attributes (JSON)"
-          hint="Optional traits — paste or edit the example"
-        >
-          <textarea
-            className={`${inputClass} min-h-24 font-mono text-xs`}
-            placeholder={EXAMPLE_ATTRIBUTES}
-            value={attributesJson}
-            onChange={(e) => setAttributesJson(e.target.value)}
-            disabled={isBusy}
-          />
-        </Field>
-
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            className={secondaryButtonClass}
-            onClick={handleDownloadMetadata}
-            disabled={isBusy || !name || !imageUrl}
-          >
-            Download metadata JSON
-          </button>
-        </div>
-
-        <Field
-          label="Metadata URI"
-          required
-          hint="Upload the JSON to IPFS/Arweave, then paste the link here"
-        >
-          <input
-            className={inputClass}
-            placeholder="https://arweave.net/… or ipfs://…"
-            value={metadataUri}
-            onChange={(e) => setMetadataUri(e.target.value)}
-            disabled={isBusy}
-          />
-        </Field>
-
-        <Field label="Quantity" hint="Batch mint up to 20 (numbered #1, #2, …)">
-          <input
-            className={inputClass}
-            type="number"
-            min={1}
-            max={20}
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            disabled={isBusy}
-          />
-        </Field>
 
         {connected && publicKey && (
           <p className="text-xs text-zinc-500">
-            Minting as{' '}
-            <span className="font-mono text-zinc-400">
-              {publicKey.toBase58().slice(0, 4)}…{publicKey.toBase58().slice(-4)}
-            </span>
-            {' · '}
-            Est. compute: {simulationUnits != null ? simulationUnits.toLocaleString() : '—'} CU
+            Wallet {publicKey.toBase58().slice(0, 4)}…{publicKey.toBase58().slice(-4)}
+            {simulationUnits != null && ` · ~${simulationUnits.toLocaleString()} compute units`}
           </p>
         )}
 
@@ -302,21 +377,19 @@ export function MintMachine({ cluster }: Props) {
           <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>
         )}
 
-        <button
-          type="submit"
-          className={primaryButtonClass}
-          disabled={isBusy || !connected}
-        >
+        <button type="submit" className={primaryButtonClass} disabled={!canSubmit}>
           {phase === 'simulating'
-            ? 'Simulating…'
+            ? 'Checking…'
             : phase === 'minting'
-              ? 'Minting…'
-              : `Mint ${Math.min(20, Math.max(1, Number(quantity) || 1))} NFT`}
+              ? `Minting ${qty}…`
+              : mintType === 'cnft' && !treeAddress
+                ? 'Complete Step 1 first'
+                : `Mint ${qty} ${selectedOption.title} NFT${qty > 1 ? 's' : ''}`}
         </button>
 
         {!connected && (
           <p className="text-center text-sm text-zinc-500">
-            Connect Phantom or Solflare to mint on {cluster}.
+            Connect Phantom or Solflare to continue.
           </p>
         )}
       </form>
@@ -325,13 +398,15 @@ export function MintMachine({ cluster }: Props) {
         <section className="mt-8 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
           <h2 className="mb-4 text-lg font-semibold text-white">Minted</h2>
           <ul className="space-y-3">
-            {results.map((r) => (
+            {results.map((r, i) => (
               <li
-                key={r.mintAddress}
+                key={`${r.signature}-${i}`}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-zinc-800/50 px-4 py-3 text-sm"
               >
                 <span className="font-medium text-zinc-200">{r.name}</span>
-                <span className="font-mono text-xs text-zinc-500">{r.mintAddress}</span>
+                {r.mintType !== 'cnft' && (
+                  <span className="font-mono text-xs text-zinc-500">{r.mintAddress}</span>
+                )}
                 <a
                   href={explorerTxUrl(r.signature, cluster)}
                   target="_blank"
@@ -343,6 +418,12 @@ export function MintMachine({ cluster }: Props) {
               </li>
             ))}
           </ul>
+          {mintType === 'cnft' && (
+            <p className="mt-4 text-xs text-zinc-500">
+              Compressed NFTs appear in Phantom under your collectibles. Each mint is a separate
+              transaction — you may need to approve up to {results.length} times.
+            </p>
+          )}
         </section>
       )}
     </div>

@@ -4,7 +4,7 @@ import { SolanaWalletProvider } from './components/SolanaWalletProvider'
 import type { SolanaCluster } from './lib/network'
 
 export default function App() {
-  const [cluster, setCluster] = useState<SolanaCluster>('devnet')
+  const [cluster, setCluster] = useState<SolanaCluster>('mainnet-beta')
 
   return (
     <SolanaWalletProvider cluster={cluster}>
@@ -26,7 +26,7 @@ export default function App() {
         </div>
         <MintMachine cluster={cluster} />
         <footer className="mx-auto mt-12 max-w-2xl text-center text-xs text-zinc-600">
-          Simulates each mint before signing · Uses Metaplex Token Metadata · Not financial advice
+          Classic, Core, or Compressed NFTs · Simulates before signing · Not financial advice
         </footer>
       </div>
     </SolanaWalletProvider>

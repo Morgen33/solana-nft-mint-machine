@@ -12,6 +12,7 @@ import type { MintResult, MintType } from '../lib/mint'
 import { getMintOption } from '../lib/mintOptions'
 import type { SolanaCluster } from '../lib/network'
 import { explorerTxUrl } from '../lib/network'
+import { ArweaveUpload } from './ArweaveUpload'
 import { CnftTreeSetup } from './CnftTreeSetup'
 import { NftTypePicker } from './NftTypePicker'
 
@@ -45,6 +46,8 @@ export function MintMachine({ cluster }: Props) {
   const [simulationUnits, setSimulationUnits] = useState<number | null>(null)
   const [results, setResults] = useState<MintResult[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [showManualUrls, setShowManualUrls] = useState(false)
+  const [arweaveReady, setArweaveReady] = useState(false)
 
   const sellerFeeBasisPoints = Math.round(
     Math.min(100, Math.max(0, Number(royaltyPercent) || 0)) * 100,
@@ -297,19 +300,6 @@ export function MintMachine({ cluster }: Props) {
               />
             </Field>
 
-            <Field
-              label="Image URL"
-              hint="Permanent link to your image (e.g. arweave.net)"
-            >
-              <input
-                className={inputClass}
-                placeholder="https://arweave.net/…"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                disabled={isBusy}
-              />
-            </Field>
-
             <Field label="Attributes (JSON)" hint="Optional">
               <textarea
                 className={`${inputClass} min-h-24 font-mono text-xs`}
@@ -320,28 +310,82 @@ export function MintMachine({ cluster }: Props) {
               />
             </Field>
 
+            <ArweaveUpload
+              cluster={cluster}
+              disabled={isBusy}
+              name={name}
+              symbol={symbol}
+              description={description}
+              attributesJson={attributesJson}
+              onUploaded={(image, metadata) => {
+                setImageUrl(image)
+                setMetadataUri(metadata)
+                setArweaveReady(true)
+                setStatusMessage(
+                  'Arweave links ready. Same metadata URI works for all copies in your batch.',
+                )
+              }}
+            />
+
             <button
               type="button"
-              className={secondaryButtonClass}
-              onClick={handleDownloadMetadata}
-              disabled={isBusy || !name || !imageUrl}
+              className="text-xs text-zinc-500 underline hover:text-zinc-300"
+              onClick={() => setShowManualUrls((v) => !v)}
             >
-              Download metadata JSON
+              {showManualUrls
+                ? 'Hide manual links'
+                : 'Already have Arweave links? Paste them manually'}
             </button>
 
-            <Field
-              label="Metadata URI"
-              required
-              hint="Upload JSON to Arweave — paste the link here (one link for all copies)"
-            >
-              <input
-                className={inputClass}
-                placeholder="https://arweave.net/…"
-                value={metadataUri}
-                onChange={(e) => setMetadataUri(e.target.value)}
-                disabled={isBusy}
-              />
-            </Field>
+            {showManualUrls && (
+              <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                <Field label="Image URL" hint="arweave.net or other permanent URL">
+                  <input
+                    className={inputClass}
+                    placeholder="https://arweave.net/…"
+                    value={imageUrl}
+                    onChange={(e) => {
+                      setImageUrl(e.target.value)
+                      setArweaveReady(false)
+                    }}
+                    disabled={isBusy}
+                  />
+                </Field>
+                <button
+                  type="button"
+                  className={secondaryButtonClass}
+                  onClick={handleDownloadMetadata}
+                  disabled={isBusy || !name || !imageUrl}
+                >
+                  Download metadata JSON
+                </button>
+                <Field label="Metadata URI" hint="One link for all batch copies">
+                  <input
+                    className={inputClass}
+                    placeholder="https://arweave.net/…"
+                    value={metadataUri}
+                    onChange={(e) => {
+                      setMetadataUri(e.target.value)
+                      setArweaveReady(false)
+                    }}
+                    disabled={isBusy}
+                  />
+                </Field>
+              </div>
+            )}
+
+            {(arweaveReady || metadataUri) && (
+              <div className="rounded-lg border border-zinc-700/60 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-400 space-y-1">
+                <p>
+                  <span className="text-zinc-500">Image:</span>{' '}
+                  <span className="font-mono text-zinc-300 break-all">{imageUrl || '—'}</span>
+                </p>
+                <p>
+                  <span className="text-zinc-500">Metadata:</span>{' '}
+                  <span className="font-mono text-zinc-300 break-all">{metadataUri || '—'}</span>
+                </p>
+              </div>
+            )}
 
             <Field
               label="How many to mint?"

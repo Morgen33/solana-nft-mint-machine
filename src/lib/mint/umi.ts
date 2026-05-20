@@ -4,11 +4,23 @@ import { mplTokenMetadata } from '@metaplex-foundation/mpl-token-metadata'
 import { mplToolbox } from '@metaplex-foundation/mpl-toolbox'
 import type { Umi } from '@metaplex-foundation/umi'
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults'
+import { irysUploader } from '@metaplex-foundation/umi-uploader-irys/web'
 import { walletAdapterIdentity } from '@metaplex-foundation/umi-signer-wallet-adapters'
 import type { WalletAdapter } from '@solana/wallet-adapter-base'
 import type { SolanaCluster } from '../network'
 import { CLUSTER_ENDPOINTS } from '../network'
 import type { MintType } from './types'
+
+/** Umi + Irys for permanent Arweave uploads (wallet pays once per file). */
+export function createUmiForUpload(
+  wallet: WalletAdapter,
+  cluster: SolanaCluster,
+): Umi {
+  return createUmi(CLUSTER_ENDPOINTS[cluster])
+    .use(mplToolbox())
+    .use(walletAdapterIdentity(wallet))
+    .use(irysUploader())
+}
 
 export function createUmiForWallet(
   wallet: WalletAdapter,

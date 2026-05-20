@@ -15,10 +15,10 @@ Open http://localhost:5173
 ## Mint flow
 
 1. **Connect wallet** (switch network in wallet to match Devnet/Mainnet tab).
-2. Fill in name, image URL, description, optional traits.
-3. Click **Download metadata JSON** and upload the file to [NFT.Storage](https://nft.storage), [Pinata](https://pinata.cloud), or Arweave.
-4. Paste the hosted **metadata URI** into the form.
-5. Click **Mint** — the app simulates the transaction first, then asks your wallet to sign.
+2. Fill in name, description, optional traits.
+3. **Upload to Arweave** — pick your image; your wallet pays a small one-time storage fee via [Irys](https://irys.xyz). Image + metadata links are filled in automatically.
+4. For **compressed NFTs**: create your storage tree once, then mint (great for 20+ copies with one image).
+5. Click **Mint** — simulates first, then wallet approval(s).
 
 ## Devnet SOL
 

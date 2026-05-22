@@ -212,6 +212,7 @@ MAINNET → Connect → Compressed → Create tree (once)
 ## Support links
 
 - **Live app:** https://solana-nft-mint-machine.vercel.app
+- **Fees & costs (what you pay and why):** [FEES-AND-COSTS.md](./FEES-AND-COSTS.md)
 - **Code / updates:** https://github.com/Morgen33/solana-nft-mint-machine
 - **Solana Explorer:** https://explorer.solana.com (paste tx signature from site)
 

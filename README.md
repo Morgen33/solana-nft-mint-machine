@@ -2,7 +2,8 @@
 
 A wallet-connected web app to mint Metaplex NFTs on Solana. Connect Phantom or Solflare, upload to Arweave, simulate, then mint one or up to 20 NFTs in a batch.
 
-**Owner manual (step-by-step):** [OWNER-MANUAL.md](./OWNER-MANUAL.md)
+**Owner manual (step-by-step):** [OWNER-MANUAL.md](./OWNER-MANUAL.md)  
+**Fees & where the money goes:** [FEES-AND-COSTS.md](./FEES-AND-COSTS.md)
 
 ## Quick start
 

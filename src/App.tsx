@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { DocLinks } from './components/DocLinks'
 import { MintMachine } from './components/MintMachine'
 import { SolanaWalletProvider } from './components/SolanaWalletProvider'
 import type { SolanaCluster } from './lib/network'
@@ -25,8 +26,11 @@ export default function App() {
           </div>
         </div>
         <MintMachine cluster={cluster} />
-        <footer className="mx-auto mt-12 max-w-2xl text-center text-xs text-zinc-600">
-          Classic, Core, or Compressed NFTs · Simulates before signing · Not financial advice
+        <footer className="mx-auto mt-12 max-w-2xl space-y-4 text-center">
+          <DocLinks size="md" />
+          <p className="text-xs text-zinc-600">
+            Classic, Core, or Compressed NFTs · Simulates before signing · Not financial advice
+          </p>
         </footer>
       </div>
     </SolanaWalletProvider>

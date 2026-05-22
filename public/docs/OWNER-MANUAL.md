@@ -1,6 +1,6 @@
 # NFT Mint Machine — Owner Manual
 
-**Site:** [solana-nft-mint-machine.vercel.app](https://solana-nft-mint-machine.vercel.app)  
+**Site:** https://solana-nft-mint-machine.vercel.app  
 **Who this is for:** You (the owner) minting your own NFTs on Solana mainnet.
 
 ---
@@ -71,7 +71,7 @@ This is the path you built the site for.
 
 ### Step 1 — Open the site and connect
 
-1. Go to [solana-nft-mint-machine.vercel.app](https://solana-nft-mint-machine.vercel.app)
+1. Go to https://solana-nft-mint-machine.vercel.app
 2. Confirm **Mainnet** is selected (top center).
 3. Click **Connect wallet** → choose Phantom or Solflare → approve.
 

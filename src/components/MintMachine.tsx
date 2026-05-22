@@ -16,7 +16,9 @@ import { getMintOption } from '../lib/mintOptions'
 import type { SolanaCluster } from '../lib/network'
 import { explorerTxUrl } from '../lib/network'
 import { ArweaveUpload } from './ArweaveUpload'
+import { DocLinks } from './DocLinks'
 import { MetadataPreview } from './MetadataPreview'
+import { DOC_LINKS } from '../lib/docs'
 import { NftTypePicker } from './NftTypePicker'
 import { SimpleTraits } from './SimpleTraits'
 
@@ -307,9 +309,20 @@ export function MintMachine({ cluster }: Props) {
         <WalletMultiButton />
       </header>
 
+      <DocLinks className="mb-6" />
+
       {cluster === 'mainnet-beta' && (
         <div className="mb-6 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          <strong>Real money.</strong> Wallet must be on Mainnet with enough SOL for fees.
+          <strong>Real money.</strong> Wallet must be on Mainnet with enough SOL. See{' '}
+          <a
+            href={DOC_LINKS.feesAndCosts}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-amber-100 underline underline-offset-2 hover:text-white"
+          >
+            fees & costs
+          </a>{' '}
+          before you launch.
         </div>
       )}
 

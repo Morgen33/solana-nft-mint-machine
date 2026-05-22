@@ -15,6 +15,9 @@ type Props = {
   symbol: string
   description: string
   attributesJson: string
+  websiteUrl?: string
+  file: File | null
+  onFileChange: (file: File | null) => void
   onUploaded: (imageUri: string, metadataUri: string) => void
 }
 
@@ -25,10 +28,12 @@ export function ArweaveUpload({
   symbol,
   description,
   attributesJson,
+  websiteUrl,
+  file,
+  onFileChange,
   onUploaded,
 }: Props) {
   const { wallet, connected } = useWallet()
-  const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [estimateSol, setEstimateSol] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -96,7 +101,7 @@ export function ArweaveUpload({
     setStatus(null)
     setDone(false)
     if (!picked) {
-      setFile(null)
+      onFileChange(null)
       return
     }
     if (!picked.type.startsWith('image/')) {
@@ -107,7 +112,7 @@ export function ArweaveUpload({
       setError(`Max file size is ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`)
       return
     }
-    setFile(picked)
+    onFileChange(picked)
   }
 
   const handleUpload = useCallback(async () => {
@@ -138,6 +143,7 @@ export function ArweaveUpload({
           symbol: symbol.trim() || 'NFT',
           description,
           attributesJson,
+          websiteUrl,
         },
         setStatus,
       )
@@ -173,12 +179,11 @@ export function ArweaveUpload({
     <div className="rounded-2xl border border-emerald-500/25 bg-emerald-950/20 p-4 space-y-4">
       <div>
         <p className="text-sm font-semibold text-emerald-100">
-          Permanent storage on Arweave
+          Your artwork
         </p>
         <p className="mt-1 text-xs text-emerald-100/75 leading-relaxed">
-          Pick your image here. Your wallet pays once to store it forever — no
-          monthly pinning, no Pinata. We upload the image and metadata JSON for
-          you automatically.
+          Choose an image — we build the metadata JSON from your name and
+          description above, then store both permanently on Arweave.
         </p>
       </div>
 
@@ -230,7 +235,7 @@ export function ArweaveUpload({
         onClick={() => void handleUpload()}
         className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
       >
-        {busy ? 'Uploading to Arweave…' : 'Upload to Arweave (permanent)'}
+        {busy ? 'Saving to Arweave…' : 'Save art + metadata to Arweave'}
       </button>
     </div>
   )

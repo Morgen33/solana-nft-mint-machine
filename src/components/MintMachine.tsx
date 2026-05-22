@@ -1,26 +1,42 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { useWallet } from '@solana/wallet-adapter-react'
-import { clearTreeAddress, loadTreeAddress, saveTreeAddress } from '../lib/cnftTree'
+import { uploadImageAndMetadataToArweave } from '../lib/arweave/upload'
+import { loadTreeAddress, saveTreeAddress } from '../lib/cnftTree'
 import {
+  attributesToJson,
+  buildAttributesFromSimpleTraits,
   buildMetadataJson,
   downloadMetadataJson,
   parseAttributesJson,
 } from '../lib/metadata'
-import { mintBatch, simulateMint } from '../lib/mint'
+import { createCnftTree, mintBatch, simulateMint } from '../lib/mint'
 import type { MintResult, MintType } from '../lib/mint'
 import { getMintOption } from '../lib/mintOptions'
 import type { SolanaCluster } from '../lib/network'
 import { explorerTxUrl } from '../lib/network'
 import { ArweaveUpload } from './ArweaveUpload'
-import { CnftTreeSetup } from './CnftTreeSetup'
+import { MetadataPreview } from './MetadataPreview'
 import { NftTypePicker } from './NftTypePicker'
+import { SimpleTraits } from './SimpleTraits'
 
 type Props = {
   cluster: SolanaCluster
 }
 
-type MintPhase = 'idle' | 'simulating' | 'minting' | 'done' | 'error'
+type MintPhase =
+  | 'idle'
+  | 'creating-tree'
+  | 'uploading'
+  | 'simulating'
+  | 'minting'
+  | 'done'
+  | 'error'
+
+const DEFAULT_TRAITS = [
+  { name: '', value: '' },
+  { name: '', value: '' },
+]
 
 const EXAMPLE_ATTRIBUTES = `[
   { "trait_type": "Rarity", "value": "Legendary" },
@@ -38,6 +54,10 @@ export function MintMachine({ cluster }: Props) {
   const [imageUrl, setImageUrl] = useState('')
   const [metadataUri, setMetadataUri] = useState('')
   const [attributesJson, setAttributesJson] = useState('')
+  const [simpleTraits, setSimpleTraits] = useState(DEFAULT_TRAITS)
+  const [websiteUrl, setWebsiteUrl] = useState('')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [showAdvancedJson, setShowAdvancedJson] = useState(false)
   const [royaltyPercent, setRoyaltyPercent] = useState('5')
   const [quantity, setQuantity] = useState('20')
 
@@ -51,6 +71,22 @@ export function MintMachine({ cluster }: Props) {
 
   const sellerFeeBasisPoints = Math.round(
     Math.min(100, Math.max(0, Number(royaltyPercent) || 0)) * 100,
+  )
+
+  const resolvedAttributes = useMemo(() => {
+    if (showAdvancedJson && attributesJson.trim()) {
+      try {
+        return parseAttributesJson(attributesJson)
+      } catch {
+        return buildAttributesFromSimpleTraits(simpleTraits)
+      }
+    }
+    return buildAttributesFromSimpleTraits(simpleTraits)
+  }, [attributesJson, showAdvancedJson, simpleTraits])
+
+  const resolvedAttributesJson = useMemo(
+    () => attributesToJson(resolvedAttributes),
+    [resolvedAttributes],
   )
 
   const walletKey = publicKey?.toBase58() ?? ''
@@ -70,25 +106,15 @@ export function MintMachine({ cluster }: Props) {
     }
   }
 
-  const handleTreeCreated = (address: string) => {
-    setTreeAddress(address)
-    if (walletKey) saveTreeAddress(cluster, walletKey, address)
-  }
-
-  const handleClearTree = () => {
-    if (walletKey) clearTreeAddress(cluster, walletKey)
-    setTreeAddress(null)
-  }
-
   const handleDownloadMetadata = useCallback(() => {
     try {
-      const attributes = parseAttributesJson(attributesJson)
       const json = buildMetadataJson({
         name,
         symbol,
         description,
         imageUrl,
-        attributes,
+        attributes: resolvedAttributes,
+        externalUrl: websiteUrl,
       })
       const safeName = (name || 'nft').replace(/\s+/g, '-').toLowerCase()
       downloadMetadataJson(json, `${safeName}-metadata.json`)
@@ -98,9 +124,70 @@ export function MintMachine({ cluster }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
-  }, [attributesJson, description, imageUrl, name, symbol])
+  }, [description, imageUrl, name, resolvedAttributes, symbol, websiteUrl])
 
-  const handleMint = useCallback(async () => {
+  const runMint = useCallback(
+    async (uri: string, tree: string | null) => {
+      if (!wallet?.adapter) return
+
+      const qty = Math.min(20, Math.max(1, Number(quantity) || 1))
+      const params = {
+        name: name.trim(),
+        uri,
+        sellerFeeBasisPoints,
+        symbol: symbol.trim() || undefined,
+      }
+
+      setPhase('simulating')
+      setStatusMessage('Checking mint transaction…')
+
+      const simulation = await simulateMint(
+        mintType,
+        wallet.adapter,
+        cluster,
+        params,
+        tree ?? undefined,
+      )
+      if (!simulation.success) {
+        setPhase('error')
+        setError(simulation.error ?? 'Simulation failed')
+        setStatusMessage('')
+        return
+      }
+
+      setSimulationUnits(simulation.unitsConsumed ?? null)
+      setPhase('minting')
+      setStatusMessage(
+        `Minting ${qty} NFT${qty > 1 ? 's' : ''}… approve each wallet prompt.`,
+      )
+
+      const minted = await mintBatch(
+        mintType,
+        wallet.adapter,
+        cluster,
+        params,
+        qty,
+        tree ?? undefined,
+        (current, total) => {
+          setStatusMessage(`Minted ${current} of ${total}…`)
+        },
+      )
+      setResults(minted)
+      setPhase('done')
+      setStatusMessage(`Launched — ${minted.length} NFT${minted.length > 1 ? 's' : ''} in your wallet.`)
+    },
+    [
+      cluster,
+      mintType,
+      name,
+      quantity,
+      sellerFeeBasisPoints,
+      symbol,
+      wallet?.adapter,
+    ],
+  )
+
+  const handleLaunch = useCallback(async () => {
     setError(null)
     setResults([])
     setSimulationUnits(null)
@@ -110,67 +197,59 @@ export function MintMachine({ cluster }: Props) {
       return
     }
 
-    if (mintType === 'cnft' && !treeAddress) {
-      setError('Create your storage tree first (Step 1 above).')
-      return
-    }
-
-    if (!metadataUri.trim()) {
-      setError('Metadata URI is required — your permanent Arweave (or other) link to the JSON file.')
-      return
-    }
-
     if (!name.trim()) {
-      setError('Name is required.')
+      setError('Enter a name for your NFT.')
       return
     }
 
-    const qty = Math.min(20, Math.max(1, Number(quantity) || 1))
-    const params = {
-      name: name.trim(),
-      uri: metadataUri.trim(),
-      sellerFeeBasisPoints,
-      symbol: symbol.trim() || undefined,
-    }
-
-    setPhase('simulating')
-    setStatusMessage('Checking transaction before wallet approval…')
-
-    const simulation = await simulateMint(
-      mintType,
-      wallet.adapter,
-      cluster,
-      params,
-      treeAddress ?? undefined,
-    )
-    if (!simulation.success) {
-      setPhase('error')
-      setError(simulation.error ?? 'Simulation failed')
-      setStatusMessage('')
+    if (!imageFile && !metadataUri.trim()) {
+      setError('Choose an image above — we need it to build your metadata.')
       return
     }
 
-    setSimulationUnits(simulation.unitsConsumed ?? null)
-    setPhase('minting')
-    setStatusMessage(
-      `Minting ${qty} ${getMintOption(mintType).title} NFT${qty > 1 ? 's' : ''}… approve each prompt in your wallet.`,
-    )
+    let tree = treeAddress
+    let uri = metadataUri.trim()
 
     try {
-      const minted = await mintBatch(
-        mintType,
-        wallet.adapter,
-        cluster,
-        params,
-        qty,
-        treeAddress ?? undefined,
-        (current, total) => {
-          setStatusMessage(`Minted ${current} of ${total}…`)
-        },
-      )
-      setResults(minted)
-      setPhase('done')
-      setStatusMessage(`Done — ${minted.length} NFT${minted.length > 1 ? 's' : ''} minted.`)
+      if (mintType === 'cnft' && !tree) {
+        setPhase('creating-tree')
+        setStatusMessage('Step 1: Creating storage tree (one-time wallet approval)…')
+        const created = await createCnftTree(wallet.adapter, cluster)
+        tree = created.treeAddress
+        setTreeAddress(tree)
+        saveTreeAddress(cluster, walletKey, tree)
+      }
+
+      if (imageFile) {
+        setPhase('uploading')
+        setStatusMessage('Building metadata + saving to Arweave forever…')
+        const uploaded = await uploadImageAndMetadataToArweave(
+          wallet.adapter,
+          cluster,
+          {
+            imageFile,
+            name: name.trim(),
+            symbol: symbol.trim() || 'NFT',
+            description,
+            attributesJson: resolvedAttributesJson,
+            websiteUrl,
+          },
+          setStatusMessage,
+        )
+        uri = uploaded.metadataUri
+        setImageUrl(uploaded.imageUri)
+        setMetadataUri(uri)
+        setArweaveReady(true)
+      }
+
+      if (!uri) {
+        setPhase('error')
+        setError('Metadata missing — upload your image or paste a metadata link.')
+        return
+      }
+
+      setStatusMessage('Step 3: Minting on Solana…')
+      await runMint(uri, tree)
     } catch (err) {
       setPhase('error')
       const message =
@@ -185,22 +264,31 @@ export function MintMachine({ cluster }: Props) {
   }, [
     cluster,
     connected,
+    description,
+    imageFile,
     metadataUri,
     mintType,
     name,
     publicKey,
     quantity,
-    sellerFeeBasisPoints,
+    resolvedAttributesJson,
+    runMint,
     symbol,
     treeAddress,
     wallet?.adapter,
+    walletKey,
+    websiteUrl,
   ])
 
-  const isBusy = phase === 'simulating' || phase === 'minting'
+  const isBusy =
+    phase === 'creating-tree' ||
+    phase === 'uploading' ||
+    phase === 'simulating' ||
+    phase === 'minting'
   const qty = Math.min(20, Math.max(1, Number(quantity) || 1))
   const selectedOption = getMintOption(mintType)
-  const cnftReady = mintType !== 'cnft' || Boolean(treeAddress)
-  const canSubmit = connected && cnftReady && !isBusy
+  const canLaunch =
+    connected && !isBusy && name.trim() && (Boolean(imageFile) || Boolean(metadataUri.trim()))
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -229,30 +317,29 @@ export function MintMachine({ cluster }: Props) {
         className="space-y-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-6 shadow-xl backdrop-blur"
         onSubmit={(e) => {
           e.preventDefault()
-          void handleMint()
+          void handleLaunch()
         }}
       >
         <NftTypePicker value={mintType} onChange={handleMintTypeChange} disabled={isBusy} />
 
-        {mintType === 'cnft' && (
-          <>
-            <CnftTreeSetup
-              cluster={cluster}
-              treeAddress={treeAddress}
-              onTreeCreated={handleTreeCreated}
-              onClearTree={handleClearTree}
-              disabled={isBusy}
-            />
-            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-100/90">
-              <strong>Same image for all {qty}?</strong> Use one Metadata URI for every copy. Names
-              will be numbered automatically ({name || 'Your Name'} #1, #2, …).
-            </div>
-          </>
+        {mintType === 'cnft' && treeAddress && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-2 text-xs text-emerald-200">
+            Storage tree ready — launch will skip tree setup.
+          </div>
+        )}
+
+        {mintType === 'cnft' && !treeAddress && (
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-100/90">
+            <strong>Launch</strong> will create your storage tree automatically (one wallet
+            approval), then save to Arweave, then mint {qty} copies named{' '}
+            {name || 'Your Name'} #1, #2, …
+          </div>
         )}
 
         <div className="border-t border-zinc-800/80 pt-2">
-          <p className="mb-4 text-sm font-medium text-zinc-300">
-            {mintType === 'cnft' ? 'Step 2 — Art & details' : 'Art & details'}
+          <p className="mb-1 text-sm font-medium text-zinc-300">Tell us about your NFT</p>
+          <p className="mb-4 text-xs text-zinc-500">
+            We turn this into standard metadata — no JSON editing required.
           </p>
 
           <div className="space-y-5">
@@ -300,15 +387,30 @@ export function MintMachine({ cluster }: Props) {
               />
             </Field>
 
-            <Field label="Attributes (JSON)" hint="Optional">
-              <textarea
-                className={`${inputClass} min-h-24 font-mono text-xs`}
-                placeholder={EXAMPLE_ATTRIBUTES}
-                value={attributesJson}
-                onChange={(e) => setAttributesJson(e.target.value)}
+            <Field label="Website (optional)" hint="Shows as external link on some marketplaces">
+              <input
+                className={inputClass}
+                placeholder="https://yoursite.com"
+                value={websiteUrl}
+                onChange={(e) => setWebsiteUrl(e.target.value)}
                 disabled={isBusy}
               />
             </Field>
+
+            <SimpleTraits
+              traits={simpleTraits}
+              onChange={setSimpleTraits}
+              disabled={isBusy}
+            />
+
+            <MetadataPreview
+              name={name}
+              symbol={symbol}
+              description={description}
+              imageUrl={imageUrl}
+              attributes={resolvedAttributes}
+              websiteUrl={websiteUrl}
+            />
 
             <ArweaveUpload
               cluster={cluster}
@@ -316,16 +418,44 @@ export function MintMachine({ cluster }: Props) {
               name={name}
               symbol={symbol}
               description={description}
-              attributesJson={attributesJson}
+              attributesJson={resolvedAttributesJson}
+              websiteUrl={websiteUrl}
+              file={imageFile}
+              onFileChange={(f) => {
+                setImageFile(f)
+                setArweaveReady(false)
+              }}
               onUploaded={(image, metadata) => {
                 setImageUrl(image)
                 setMetadataUri(metadata)
                 setArweaveReady(true)
-                setStatusMessage(
-                  'Arweave links ready. Same metadata URI works for all copies in your batch.',
-                )
+                setStatusMessage('Saved on Arweave. Hit Launch to mint, or save early and mint later.')
               }}
             />
+
+            <p className="text-center text-xs text-zinc-500">
+              Optional: save to Arweave now, or let <strong>Launch</strong> do it for you.
+            </p>
+
+            <button
+              type="button"
+              className="text-xs text-zinc-500 underline hover:text-zinc-300"
+              onClick={() => setShowAdvancedJson((v) => !v)}
+            >
+              {showAdvancedJson ? 'Hide advanced JSON traits' : 'Advanced: edit raw JSON traits'}
+            </button>
+
+            {showAdvancedJson && (
+              <Field label="Attributes (JSON)">
+                <textarea
+                  className={`${inputClass} min-h-24 font-mono text-xs`}
+                  placeholder={EXAMPLE_ATTRIBUTES}
+                  value={attributesJson}
+                  onChange={(e) => setAttributesJson(e.target.value)}
+                  disabled={isBusy}
+                />
+              </Field>
+            )}
 
             <button
               type="button"
@@ -421,15 +551,21 @@ export function MintMachine({ cluster }: Props) {
           <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>
         )}
 
-        <button type="submit" className={primaryButtonClass} disabled={!canSubmit}>
-          {phase === 'simulating'
-            ? 'Checking…'
-            : phase === 'minting'
-              ? `Minting ${qty}…`
-              : mintType === 'cnft' && !treeAddress
-                ? 'Complete Step 1 first'
-                : `Mint ${qty} ${selectedOption.title} NFT${qty > 1 ? 's' : ''}`}
+        <button type="submit" className={launchButtonClass} disabled={!canLaunch}>
+          {phase === 'creating-tree'
+            ? 'Creating storage…'
+            : phase === 'uploading'
+              ? 'Saving to Arweave…'
+              : phase === 'simulating'
+                ? 'Checking…'
+                : phase === 'minting'
+                  ? `Minting ${qty}…`
+                  : `🚀 Launch ${qty} NFT${qty > 1 ? 's' : ''}`}
         </button>
+
+        <p className="text-center text-xs text-zinc-500">
+          Launch = build metadata + Arweave + mint (wallet approvals along the way)
+        </p>
 
         {!connected && (
           <p className="text-center text-sm text-zinc-500">
@@ -500,8 +636,8 @@ function Field({
 const inputClass =
   'w-full rounded-xl border border-zinc-700/80 bg-zinc-950/80 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none transition focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50'
 
-const primaryButtonClass =
-  'w-full rounded-xl bg-gradient-to-r from-violet-600 to-cyan-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-900/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40'
+const launchButtonClass =
+  'w-full rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-500 py-4 text-base font-bold text-white shadow-lg shadow-violet-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40'
 
 const secondaryButtonClass =
   'rounded-xl border border-zinc-600 bg-zinc-800/80 px-4 py-2 text-sm text-zinc-200 transition hover:bg-zinc-700 disabled:opacity-40'

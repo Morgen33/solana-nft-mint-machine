@@ -21,6 +21,7 @@ export type ArweaveUploadInput = {
   symbol: string
   description: string
   attributesJson?: string
+  websiteUrl?: string
 }
 
 export type ArweaveUploadResult = {
@@ -76,6 +77,7 @@ export async function uploadImageAndMetadataToArweave(
     description: input.description,
     imageUrl: 'https://arweave.net/placeholder',
     attributes,
+    externalUrl: input.websiteUrl,
   })
   const metadataGeneric = createGenericFileFromJson(
     metadataPlaceholder,
@@ -97,6 +99,7 @@ export async function uploadImageAndMetadataToArweave(
     description: input.description,
     imageUrl: imageUri,
     attributes,
+    externalUrl: input.websiteUrl,
   })
 
   onProgress?.('Uploading metadata JSON to Arweave…')

@@ -5,18 +5,9 @@ type LinkItem = {
   href: string
 }
 
-function siteDoc(path: string) {
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}${path}`
-  }
-  return `https://solana-nft-mint-machine.vercel.app${path}`
-}
-
 const DEFAULT_LINKS: LinkItem[] = [
   { label: 'Owner manual', href: DOC_LINKS.ownerManual },
   { label: 'Fees & costs', href: DOC_LINKS.feesAndCosts },
-  { label: 'Manual (download)', href: siteDoc('/docs/OWNER-MANUAL.md') },
-  { label: 'Fees (download)', href: siteDoc('/docs/FEES-AND-COSTS.md') },
   { label: 'GitHub', href: DOC_LINKS.repo },
 ]
 

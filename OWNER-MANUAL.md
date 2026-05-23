@@ -24,7 +24,7 @@
 ### What this tool does *not* do
 
 - It does not sell NFTs to the public by itself (no built-in payment page).
-- It does not list on Magic Eden automatically.
+- It does not list on Magic Eden automatically (you submit via [Magic Eden Creator Hub](https://creators.magiceden.io) after mint — the site shows copy-paste steps under **Minted**).
 - It does not create a website or Discord for your project.
 
 It **creates** NFTs in **your** wallet. You can hold, transfer, or list them elsewhere later.
@@ -188,12 +188,32 @@ You do **not** need to upload 20 separate images.
 
 ---
 
+## List on Magic Eden (after you mint)
+
+Minting and marketplace listing are **two different steps**. Magic Eden does not offer a public API for third-party apps to register your collection at mint time.
+
+**Fastest path for compressed NFTs (what this tool uses):**
+
+1. Finish your **Launch** mint on this site.
+2. Under **Minted**, open the green **List on Magic Eden** box.
+3. **Copy** your **Merkle tree address** (one-time storage account for all cNFTs in that batch).
+4. Go to [Creator Hub](https://creators.magiceden.io) → **Create a Collection** → **Solana**.
+5. Enter the same **name** and **symbol** you used here.
+6. Choose **Compressed NFTs** and paste the **Merkle Tree Address**.
+7. Submit. Many collections appear within minutes; if yours is already auto-listed, use **Claim** instead.
+
+Official guide: [How to list on Magic Eden using Creator Hub](https://help.magiceden.io/en/articles/6006558-how-to-list-your-nft-collection-on-magic-eden-using-creator-hub).
+
+**Note:** “Immediately” means right after Creator Hub submission — not the second you mint. Fully automatic listing from this app would require a Magic Eden partnership, not something available to typical creators.
+
+---
+
 ## After minting (owner checklist)
 
 - [ ] All transactions show **success** on Solana Explorer (links on site).
 - [ ] NFTs visible in wallet collectibles.
 - [ ] Save your **metadata URI** and **image URI** somewhere safe (spreadsheet or notes).
-- [ ] Optional: list on Magic Eden, Tensor, etc. (separate process).
+- [ ] Optional: submit collection on [Magic Eden Creator Hub](https://creators.magiceden.io) (use tree address for compressed).
 - [ ] Optional: share mint page only if you want **others** to mint — this tool mints to **your** wallet by default.
 
 ---

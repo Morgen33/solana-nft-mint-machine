@@ -19,6 +19,7 @@ import { ArweaveUpload } from './ArweaveUpload'
 import { DocLinks } from './DocLinks'
 import { MetadataPreview } from './MetadataPreview'
 import { DOC_LINKS } from '../lib/docs'
+import { MagicEdenNextSteps } from './MagicEdenNextSteps'
 import { NftTypePicker } from './NftTypePicker'
 import { SimpleTraits } from './SimpleTraits'
 
@@ -617,6 +618,16 @@ export function MintMachine({ cluster }: Props) {
               transaction — you may need to approve up to {results.length} times.
             </p>
           )}
+          <MagicEdenNextSteps
+            mintType={mintType}
+            collectionName={name}
+            collectionSymbol={symbol}
+            treeAddress={mintType === 'cnft' ? treeAddress : undefined}
+            creatorWallet={publicKey?.toBase58()}
+            sampleMintAddress={
+              mintType !== 'cnft' ? results[0]?.mintAddress : undefined
+            }
+          />
         </section>
       )}
     </div>
